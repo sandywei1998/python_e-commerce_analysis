@@ -7,7 +7,7 @@
 ```cmd
 jupyter notebook --notebook-dir="文件存放路径"
 ```
-### （二）引入pandas库并且运行生效
+### （二）引入pandas库、matploylib、seaborn并且运行生效
 指令
 ```python
 import pandas as pd
