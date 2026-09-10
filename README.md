@@ -11,6 +11,8 @@ jupyter notebook --notebook-dir="文件存放路径"
 指令
 ```python
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 ```
 ### （三）读取原始数据表
 ## 二、评估数据
