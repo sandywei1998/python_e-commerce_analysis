@@ -3,30 +3,28 @@
 
 ## 一、读取数据
 ### （一）启动Jupyter Notebook
-指令（命令行输入，cmd终端以管理员运行）：
+命令行输入，cmd终端以管理员运行：
 ```cmd
 jupyter notebook --notebook-dir="文件存放路径"
 ```
 ### （二）引入pandas库、matploylib、seaborn并且运行生效
-指令
 ```python
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 ```
 ### （三）读取原始数据表
-指令
 ```python
 original_data = pd.read_csv("你的数据源文件名.csv")
 ```
 ## 二、评估数据
 ### （一）评估数据整齐度
-指令：sample方法
+sample方法
 ```python
 original_data.sample(10)
 ```
 ### （二）评估数据干净度
-指令：使用info方法和describe方法
+使用info方法和describe方法
 ```
 original_data.info()
 original_data.describe()
@@ -61,8 +59,8 @@ cleaned_data.info()
 cleaned_data.to_csv("cleaned_ecom_data.csv", index=False)
 ```
 ## 五、可视化
-目标：基于清洗完成的 cleaned_data 做多维度可视化，挖掘业务特征，复核清洗质量；
-规范：**一个单元格绘制一张图**，单独调试，单个报错不会影响其他图表。
+> 目标：基于清洗完成的 cleaned_data 做多维度可视化，挖掘业务特征，复核清洗质量；
+> 规范：**一个单元格绘制一张图**，单独调试，单个报错不会影响其他图表。
 ### （一）全局绘图参数一次性配置（仅运行 1 次，后续所有图表生效）
 ```python
 # 设置图片清晰度、中文正常显示、负号正常显示
@@ -130,3 +128,84 @@ plt.tight_layout()
 plt.savefig("customer_order_count.png")
 plt.show()
 ```
+## 六、营收归因分析（进阶分析）
+> 说明：本数据集无广告渠道、点击日志，无法做营销触点归因；可开展业务营收归因，拆解收入来源。
+> 分析目标：识别营收贡献主体（商品/客户类型/国家），定位业务增长支点。
+
+### （一）商品营收归因
+```python
+# 1. 按商品名称汇总销售额
+product_sales = cleaned_data.groupby("Description")["SalesAmount"].sum().sort_values(ascending=False)
+
+# 2. 单品销售额占总销售额比例 + 累计占比
+product_df = product_sales.reset_index()
+product_df["percent"] = product_df["SalesAmount"] / product_df["SalesAmount"].sum()
+product_df["cum_percent"] = product_df["percent"].cumsum()
+
+# 查看结果
+product_df.head(10)
+```
+### （二）客户类型归因
+```python
+# 获取每位客户的首次下单时间
+customer_first_order = cleaned_data.groupby("CustomerID")["InvoiceDate"].min().reset_index()
+customer_first_order.columns = ["CustomerID","FirstInvoiceDate"]
+
+# 合并首单时间至主数据集
+data_with_first = pd.merge(cleaned_data, customer_first_order, on = "CustomerID")
+
+# 标记新客、老客：首次下单为新客，非首次为老客
+data_with_first["CustomerType"] = data_with_first.apply(
+    lambda x: "New Customer" if x["InvoiceDate"] == x["FirstInvoiceDate"] else "Repeat Customer", axis = 1
+)
+
+# 按客户类型汇总营收、计算占比
+cust_type_attribution = data_with_first.groupby("CustomerType")["SalesAmount"].sum()
+
+cust_type_attribution / cust_type_attribution.sum()
+```
+### （三）区域市场营收归因
+```python
+# 按国家区域汇总营收并计算占比
+country_attribution = cleaned_data.groupby("Country")["SalesAmount"].sum().sort_values(ascending = False)
+country_attribution / country_attribution.sum()
+```
+## 七、客户转化漏斗分析
+> 说明：本数据集仅包含订单交易记录，无网站访问、浏览、加购行为，无法构建流量漏斗；基于客户订单行为，构建【首单→复购→高价值客户】交易复购漏斗，评估客户留存转化能力。
+
+### 分析目标
+统计客户从首次下单，到多次复购的逐级转化情况，识别客户流失节点，评估客户粘性，为客户运营策略提供依据。
+
+### 代码实现
+```python
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# 1. 统计每个客户的订单总次数
+customer_order_count = cleaned_data.groupby("CustomerID")["InvoiceNo"].nunique().reset_index()
+customer_order_count.columns = ["CustomerID", "order_times"]
+
+# 2. 按下单次数划分客户阶段
+def customer_level(times):
+    if times == 1:
+        return "首单客户"
+    elif times ==2:
+        return "2次复购客户"
+    else:
+        return "3次及以上高价值客户"
+
+customer_order_count["customer_level"] = customer_order_count["order_times"].apply(customer_level)
+
+# 3. 统计各阶段客户数量，构造漏斗表
+funnel_df = customer_order_count["customer_level"].value_counts().reset_index()
+funnel_df.columns = ["stage", "user_count"]
+# 固定漏斗顺序
+stage_order = ["首单客户", "2次复购客户", "3次及以上高价值客户"]
+funnel_df["stage"] = pd.Categorical(funnel_df["stage"], categories=stage_order, ordered=True)
+funnel_df = funnel_df.sort_values("stage")
+
+# 4. 计算整体转化率、逐级转化率
+funnel_df["conversion_rate"] = funnel_df["user_count"] / funnel_df["user_count"].iloc[0]
+funnel_df["step_rate"] = funnel_df["user_count"] / funnel_df["user_count"].shift(1)
+
+funnel_df
